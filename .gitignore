@@ -1,3 +1,7 @@
-/private
+secret.yml
+*.sqlite*
+*-lock
 *.log*
-*.sqlite
+*.pyc
+received/
+temp/
