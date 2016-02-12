@@ -483,6 +483,12 @@ schedules:
     interval:
       days: 3
     
+  - tasks: [ 'next_tv' ]
+    interval:
+      hours: 2
+  - tasks: [ 'download_tv' ]
+    schedule:
+      minute: 3,18,33,48
 
   - tasks: [ 'tv_premiere' ]
     interval:
