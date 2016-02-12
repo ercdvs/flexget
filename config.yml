@@ -86,7 +86,7 @@ templates:
     
     pushbullet:
       apikey: '{{ secrets.pushbullet.apikey }}'
-      title: "[Flexget] {{task}}"
+      title: "[Flexget] New Episode"
       body: "{{ tvdb_series_name|default(series_name) }} - {{ series_id }}{% if tvdb_ep_name|default(False) %} - {{ tvdb_ep_name }}{% endif %}\n{{ quality }}"
 #      title: "New Episode: {{ series_name }} "
 #      body:  "{{ series_id }}{% if tvdb_ep_name|default(False) %}: {{ tvdb_ep_name }}{% endif %}"    
@@ -155,10 +155,10 @@ templates:
       movedone: "/media/Movie/{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }} ({{ imdb_year }})"
       # Rename the "content file" to something nice, use leading slash to force file to top level
       content_filename: |
-        /{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }} ({{ imdb_year }}) - {{ quality }}
+        /{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}.({{ imdb_year }}).{{ quality }}
     pushbullet:
       apikey: '{{ secrets.pushbullet.apikey }}'
-      title: "[Flexget] {{task}}"
+      title: "[Flexget] New Movie"
       body: "{{ imdb_name }} ({{ imdb_year }})\n{{ quality }}"
 
   movies_search:
@@ -179,7 +179,7 @@ templates:
   # This template uses the movie queue to find movies from various sources
   movies_queued:
     movie_queue: accept
-    template: movies_discover
+    template: movies_search
     disable:
       - seen_movies
     discover:
@@ -206,7 +206,7 @@ tasks:
 
   # Discover new shows that are not already added to the existing lists
   # limit by genres i just don't care about
-  get_new_tv:
+  tv_premiere:
     priority: 50
     template:
       - tv-global
@@ -249,6 +249,75 @@ tasks:
       queuetotop: no
       label: tv-premiere
 
+  # Download proper TV shows
+  download_tv:
+    priority: 10
+    include:
+      - series-cleanup.yml
+    template: [tv-global]
+    sequence:
+      - configure_series:
+          settings:
+            target: 720p+ hdtv+
+            timeframe: 5 days
+            quality: 720p+ dvdscr+
+            tracking: backfill
+          from:
+            trakt_list:
+              account: '{{ secrets.trakt.account }}'
+              list: TV
+              type: shows
+              strip_dates: yes
+
+# Backfill any missing tv shows
+  next_tv:
+    template: [tv-global, tv_search]
+    disable: inputs
+    no_entries_ok: yes
+    discover:
+      interval: 2 hours
+      what:
+        - trakt_emit:
+            account: '{{ secrets.trakt.account }}'
+            context: collected
+            position: next
+            list: TV
+          #  aired_timeframe: 60 days
+      from: [filler: yes]
+    include: [ series-cleanup.yml ]
+    all_series:
+      target: 720p+ hdtv+
+      timeframe: 5 days
+      quality: 720p+ dvdscr+
+      tracking: backfill
+
+  missing_tv:
+    template:
+      - tv-global
+      - tv_search
+    disable: inputs, est_movies
+    discover:
+      what:
+        - emit_series:
+            backfill: yes
+      from: [filler: yes]
+    include:
+      - series-cleanup.yml
+    sequence:
+      - configure_series:
+          settings:
+            target: 720p+ hdtv+
+            timeframe: 5 days
+            quality: 720p+ dvdscr+
+            tracking: backfill
+            propers: no
+            upgrade: no
+          from:
+            trakt_list:
+              account: '{{ secrets.trakt.account }}'
+              list: TV
+              type: shows
+              strip_dates: yes
   # Cleans movies from the movie queue (and Trakt) that we already have
   clean_movie_queue:
     priority: 90
@@ -310,7 +379,7 @@ tasks:
     include:
       - series-cleanup.yml
     template:
-      - tv_global
+      - tv-global
     disable:
       - seen
       - seen_info_hash
@@ -385,3 +454,47 @@ tasks:
     verify_ssl_certificates: no
     set:
       label: local-movies
+
+  kill_tv:   # used when TV shows go off air/cancelled to remove them from further downloading
+    disable:
+      - seen
+      - seen_info_hash
+
+    trakt_list:
+      account: '{{ secrets.trakt.account }}'
+      list: TV
+      type: shows
+    all_series: yes
+
+    if:
+      - tvdb_status == 'Ended': accept
+
+    trakt_remove:
+      account: '{{ secrets.trakt.account }}'
+      list: TV
+# Run flexget on a periodic basis
+schedules:
+
+  - tasks: [ 'dropbox_*' ]
+    interval:
+      minutes: 15
+
+  - tasks: [ 'missing_tv' ]
+    interval:
+      days: 3
+    
+
+  - tasks: [ 'tv_premiere' ]
+    interval:
+      hours: 2
+
+
+  - tasks: [ 'movie_queue', 'movies_*' ]
+    interval:
+      hours: 1
+
+  - tasks: [ 'clean_movie_queue' ]
+    interval:
+      weeks: 1
+
+
