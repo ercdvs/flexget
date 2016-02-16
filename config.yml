@@ -59,6 +59,8 @@ templates:
       keep_subs: yes
       automanaged: true
       port: 58846
+      removeatratio: yes
+      ratio: 0
 
     # template for specific tv things
   tv-global:
