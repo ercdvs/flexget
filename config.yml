@@ -259,7 +259,7 @@ tasks:
       - configure_series:
           settings:
             target: 720p+ hdtv+
-            timeframe: 5 days
+            timeframe: 1 day
             quality: 720p+ dvdscr+
             tracking: backfill
           from:
@@ -495,7 +495,7 @@ schedules:
       hours: 2
 
 
-  - tasks: [ 'movie_queue', 'movies_*' ]
+  - tasks: [ 'fill_movie_queue', 'movies_*' ]
     interval:
       hours: 1
 
