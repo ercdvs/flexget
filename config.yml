@@ -262,7 +262,7 @@ tasks:
             target: 720p+ hdtv+
             timeframe: 1 day
             quality: 720p+ dvdscr+
-            tracking: backfill
+     #       tracking: backfill
           from:
             trakt_list:
               account: '{{ secrets.trakt.account }}'
@@ -283,7 +283,7 @@ tasks:
             context: collected
             position: next
             list: TV
-          #  aired_timeframe: 60 days
+        #    aired_timeframe: 60 days
       from: [filler: yes]
     include: [ series-cleanup.yml ]
     all_series:
@@ -291,6 +291,8 @@ tasks:
       timeframe: 5 days
       quality: 720p+ dvdscr+
       tracking: backfill
+
+
 
   missing_tv:
     template:
@@ -310,7 +312,7 @@ tasks:
             target: 720p+ hdtv+
             timeframe: 5 days
             quality: 720p+ dvdscr+
-            tracking: backfill
+          #  tracking: backfill
             propers: no
             upgrade: no
           from:
@@ -319,6 +321,7 @@ tasks:
               list: TV
               type: shows
               strip_dates: yes
+
   # Cleans movies from the movie queue (and Trakt) that we already have
   clean_movie_queue:
     priority: 90
@@ -516,6 +519,10 @@ tasks:
       - movedone:
           set:
             path: '{{ movedone }}'
+    trakt_add: # Add accepted item to my Trakt watchlist
+      account: '{{ secrets.trakt.account }}'
+      list: collection
+
 
 # NEW   
 
@@ -553,7 +560,7 @@ tasks:
 # Run flexget on a periodic basis
 schedules:
 
-  - tasks: [ 'dropbox_*' ]
+  - tasks: [ 'dropbox_*','move_*' ]
     interval:
       minutes: 15
 
@@ -577,7 +584,7 @@ schedules:
     interval:
       hours: 1
 
-  - tasks: [ 'clean_movie_queue' ]
+  - tasks: [ 'clean_movie_queue','kill_tv' ]
     interval:
       weeks: 1
 
