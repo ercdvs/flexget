@@ -460,6 +460,7 @@ tasks:
       label: local-movies
 
   kill_tv:   # used when TV shows go off air/cancelled to remove them from further downloading
+    trakt_lookup: yes
     disable:
       - seen
       - seen_info_hash
