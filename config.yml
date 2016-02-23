@@ -471,7 +471,7 @@ tasks:
     all_series: yes
 
     if:
-      - tvdb_status == 'Ended': accept
+      - trakt_series_status == 'Ended': accept
 
     trakt_remove:
       account: '{{ secrets.trakt.account }}'
