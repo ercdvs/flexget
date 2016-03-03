@@ -1,18 +1,9 @@
-# Config file for flexget
-# based on Jeff Wilson's config https://github.com/jawilson/dotfiles
-#
-# see README.md for more details
-#
-
-#
-# Pull in credentials
 secrets: secret.yml
+
 templates:
 
   global:
-
-    pathscrub: linux
-    # Remove problematic names, files , groups, etc
+    magnets: no
     regexp:
       reject:
         - (s|d)ub(s|bed)?\b: {from: title}                    # Block any subbed/dubbed/etc videos
@@ -32,11 +23,6 @@ templates:
         - \[facepalm\]: {from: title}
         - \bASAP\b: {from: title}
 
-    # 10 seeds at a minimum for the torrent
-    torrent_alive:
-      min_seeds: 10
-      reject_for: 1 day
-
     # require certail file types
     content_filter:
       require:
@@ -48,9 +34,84 @@ templates:
         - 'password.txt'
         - '*.wmv'
 
-    verify_ssl_certificates: no
-    # Size and seed restrictions require real torrents
-    magnets: no
+  movies_global:
+    inputs:
+      - rss: 'https://kat.cr/usearch/verified%3A1%20category%3Amovies/?rss=1' # Kickass (Movies)
+
+    archive: [movies]
+    regexp:
+      reject:
+        - s\d+e\d+: {from: title}
+        - '\d{4}.\d{2}.\d{2}': {from: title}
+        - \d+x\d+: {from: title}
+        - \baac2: {from: title} # No 2 channel audio
+
+    # Force proper_movies to run after regexp to avoid unnecessary imdb_lookup
+    plugin_priority:
+      regexp: 176
+      if: 177
+      proper_movies: 171
+
+    # Impose reasonable size constraints
+    content_size:
+      max: 20000
+      min: 1000
+
+    imdb_lookup: yes
+    trakt_lookup: yes
+    # Check for already downloaded or currently downloading movies
+    exists_movie:
+      - /media/Movie/
+      - /usr/local/torrent/
+
+    proper_movies: yes
+    set:
+      # Give folders/files nice names
+      movedone: "/usr/local/torrent/mvdone/{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }} ({{ imdb_year }})"
+      # Rename the "content file" to something nice, use leading slash to force file to top level
+      content_filename: "{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}.({{ imdb_year }}).{{ quality }}"
+    pushbullet:
+      apikey: '{{ secrets.pushbullet.apikey }}'
+      title: "[Flexget] New Movie"
+      body: "{{ imdb_name }} ({{ imdb_year }})\n{{ quality }}"
+      
+  
+
+
+  tv_global:                                                                # All Global Variables for TV
+    inputs:
+      - rss: 'https://kat.cr/usearch/verified%3A1%20category%3Atv/?rss=1'   # Kickass (TV)
+      - rss: 'http://showrss.info/feeds/all.rss'
+      - rss: 'https://eztv.ag/ezrss.xml'
+
+    archive: yes
+    # size limits that make sense for TV
+    content_size:
+      max: 5000
+      min: 20
+    
+    exists_series:
+      - "/media/TV/"
+      - "/usr/local/torrent/"
+
+    # Look up info on TheTVDB.com to fill in extra info
+ #   thetvdb_lookup: yes                                                     # Trying just trakt for now
+    trakt_lookup: yes
+    #require_field: [series_name, series_id]
+    
+    set:
+      queuetotop: yes
+      movedone: >
+        /usr/local/torrent/tvdone/{{ trakt_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}
+      # Rename the "content file" to something nice, use leading slash to force file to top level
+      content_filename: >
+        /{{ trakt_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}.{{ series_id }}{% if tvdb_ep_name|default(False) %}.{{ tvdb_ep_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}{% endif %}.{{ quality }}
+      label: tv
+
+    pushbullet:
+      apikey: '{{ secrets.pushbullet.apikey }}'
+      title: "[Flexget] New Episode"
+      body: "{{ trakt_series_name|default(series_name) }} - {{ series_id }}{% if trakt_ep_name|default(False) %} - {{ trakt_ep_name }}{% endif %}\n{{ quality }}"
 
     deluge:
       username: '{{ secrets.deluge.username }}'
@@ -62,125 +123,10 @@ templates:
       removeatratio: yes
       ratio: 0
 
-    # template for specific tv things
-  tv-global:
-    inputs:
-      - rss: 'https://kat.cr/usearch/verified%3A1%20category%3Atv/?rss=1'   # Kickass (TV)
-      - rss: 'http://showrss.info/feeds/all.rss'
-      - rss: 'https://eztv.ag/ezrss.xml'
-
-    archive: yes
-
-    # size limits that make sense for TV
-    content_size:
-      max: 5000
-      min: 20
-
-    # Double check that we don't already have it
-    exists_series:
-      - "/media/TV/"
-      - "/usr/local/torrent/"
-
-  # Look up info on TheTVDB.com to fill in extra info
-    thetvdb_lookup: yes
-    trakt_lookup: yes
-    require_field: [series_name, series_id]
-    
-    pushbullet:
-      apikey: '{{ secrets.pushbullet.apikey }}'
-      title: "[Flexget] New Episode"
-      body: "{{ tvdb_series_name|default(series_name) }} - {{ series_id }}{% if tvdb_ep_name|default(False) %} - {{ tvdb_ep_name }}{% endif %}\n{{ quality }}"
-#      title: "New Episode: {{ series_name }} "
-#      body:  "{{ series_id }}{% if tvdb_ep_name|default(False) %}: {{ tvdb_ep_name }}{% endif %}"    
-    
-   # Add to DEluge for download 
-    set:
-      queuetotop: yes
-      movedone: >
-        /usr/local/torrent/tvdone/{{ tvdb_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}/{% if series_id_type == 'ep' %}Season {{ series_season }}/{% endif %}
-      # Rename the "content file" to something nice, use leading slash to force file to top level
-      content_filename: >
-        /{{ tvdb_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}.{{ series_id }}{% if tvdb_ep_name|default(False) %}.{{ tvdb_ep_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}{% endif %}.{{ quality }}
-      label: tv    
-
-  tv_search:
-    no_entries_ok: yes
-    discover:
-      what: [filler: yes]
-      from:
-        - flexget_archive: [tv]
-        - kat:
-            category: tv
-            verified: yes
-
-
-  # This template is a "global" template for all movie-related tasks.
-  movies_global:
-    inputs:
-      - rss: 'https://kat.cr/usearch/verified%3A1%20category%3Amovies/?rss=1' # Kickass (Movies)
-    #  - rss: { url: 'http://www.torlock.com/movies/rss.xml', silent: yes }     # TorLock (Movies)
-    #  - rss: { url: 'http://torrentz.eu/feed_verified?q=movies', silent: yes } # Torrentz (Verified Movies)
-    #  - rss: { url: 'https://rss.thepiratebay.se/207', silent: yes }           # The Pirate Bay (Highres - Movies)
-    # Some feeds might include TV Shows, ignore them
-    if:
-      - "has_field('category')":
-          regexp:
-            reject_excluding:
-              - '^(HD|BDRip|DVDRip.DVDScreener|DVD-R|Documentaries)$': {from: category}
-    archive: [movies]
-    regexp:
-      reject:
-        - s\d+e\d+: {from: title}
-        - '\d{4}.\d{2}.\d{2}': {from: title}
-        - \d+x\d+: {from: title}
-        - \baac2: {from: title} # No 2 channel audio
-    # Force proper_movies to run after regexp to avoid unnecessary imdb_lookup
-    plugin_priority:
-      regexp: 176
-      if: 177
-      proper_movies: 171
-    # Impose reasonable size constraints
-    content_size:
-      max: 20000
-      min: 1000
-    imdb_lookup: yes
-    trakt_lookup: yes
-    # Check for already downloaded or currently downloading movies
-    exists_movie:
-      - /media/Movie/
-      - /usr/local/torrent/
-    # Download propers, since they will have the same content_filename,
-    # lower/non-propers will be overwritten
-    proper_movies: yes
-    set:
-      # Give folders/files nice names
-      movedone: "/usr/local/torrent/mvdone/{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }} ({{ imdb_year }})"
-      # Rename the "content file" to something nice, use leading slash to force file to top level
-      content_filename: "{{ imdb_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}.({{ imdb_year }}).{{ quality }}"
-    pushbullet:
-      apikey: '{{ secrets.pushbullet.apikey }}'
-      title: "[Flexget] New Movie"
-      body: "{{ imdb_name }} ({{ imdb_year }})\n{{ quality }}"
-
-  movies_search:
-    discover:
-      from:
-        - flexget_archive: [movies]
-        - kat:
-            category: movies
-            verified: yes
-        - torrentz:
-            reputation: verified
-            extra_terms: "movie* hd"
-        #- piratebay:
-        #    category: "highres movies"
-        #    sort_by: seeds
-      what: [ filler: yes ] # Always produce entries
-
   # This template uses the movie queue to find movies from various sources
   movies_queued:
     movie_queue: accept
-    template: movies_search
+ #   template: movies_search
     disable:
       - seen_movies
     discover:
@@ -199,128 +145,66 @@ templates:
     set:
       label: my-movies
 
-  
-#
-# Taks to do actual work
-#
+  movies_search:
+    discover:
+      from:
+        - flexget_archive: [movies]
+        - kat:
+            category: movies
+            verified: yes
+        - torrentz:
+            reputation: verified
+            extra_terms: "movie* hd"
+        #- piratebay:
+        #    category: "highres movies"
+        #    sort_by: seeds
+      what: [ filler: yes ] # Always produce entries
+
 tasks:
 
-  # Discover new shows that are not already added to the existing lists
-  # limit by genres i just don't care about
-  tv_premiere:
-    priority: 50
+  movies_1080p:
+    priority: 110
     template:
-      - tv-global
+      - movies_global
+      - movies_queued
+    quality: 1080p+ bluray+ h264+ truehd|dtshd|dd5.1|dts
 
-    # The entry has to have the tvdb_genres field so I can filter by it
-    require_field:
-      - tvdb_genres
-      - tvdb_first_air_date
-
-    # Make sure plenty of people are seeding it, otherwise it may not be that good
+  movies_720p:
+    priority: 120
+    template:
+      - movies_global
+      - movies_queued
+    quality: 720p+ dvdrip+ xvid+ truehd|dtshd|dd5.1|dts|ac3
     torrent_alive:
-      min_seeds: 50
-    regexp:
-      reject:
-        - documentary: {from: tvdb_genres}
-        - talk show: {from: tvdb_genres}
-        - game show: {from: tvdb_genres}
-#        - reality: {from: tvdb_genres}
-#        - crime: {from: tvdb_genres}
-        - home and garden: {from: tvdb_genres}
+      min_seeds: 5
+    delay: 16 days # Wait 16 days for a 1080p movie before trying downloading 720p
 
-    if:
-      # Block these genres only if they are the ONLY genre listed in
-      # tvdb_genres. For example, this will not block a show that's both
-      # "Comedy" and "Drama" but it will block a show that is just "Drama"
-#      - "tvdb_genres == ['Drama']": reject
+  movies_any:
+    priority: 130
+    template:
+      - movies_global
+      - movies_queued
+    quality: dvdscr+ xvid+ truehd|dtshd|dd5.1|dts|ac3
+    torrent_alive:
+      min_seeds: 5
+    delay: 23 days # Wait 23 days for 1080p then 720p movie, else just grab the bare minimum
 
-      # Block premieres that weren't within the last 60 days
-      - tvdb_first_air_date and tvdb_first_air_date < now - timedelta(days=60): reject 
-
-    # Accept all series permieres
-    series_premiere:
-      timeframe: 1 days
-      quality: 720p+ hdtv+
-    # Add to deluge, but don't queue to top (My_TV_Shows are more important)
-    # and put in a different locatio
-    set:
-      movedone: >
-        /media/TV/{{ tvdb_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}/{% if series_id_type == 'ep' %}Season {{ series_season }}/{% endif %}
-      queuetotop: no
-      label: tv-premiere
-
-  # Download proper TV shows
   download_tv:
     priority: 10
-    include:
-      - series-cleanup.yml
-    template: [tv-global]
-    sequence:
-      - configure_series:
-          settings:
-            target: 720p+ hdtv+
-            timeframe: 1 day
-            quality: 720p+ dvdscr+
-     #       tracking: backfill
-          from:
-            trakt_list:
-              account: '{{ secrets.trakt.account }}'
-              list: TV
-              type: shows
-              strip_dates: yes
+    template: [tv_global]
 
-# Backfill any missing tv shows
-  next_tv:
-    template: [tv-global, tv_search]
-    disable: inputs
-    no_entries_ok: yes
-    discover:
-      interval: 2 hours
-      what:
-        - trakt_emit:
-            account: '{{ secrets.trakt.account }}'
-            context: collected
-            position: next
-            list: TV
-        #    aired_timeframe: 60 days
-      from: [filler: yes]
-    include: [ series-cleanup.yml ]
-    all_series:
-      target: 720p+ hdtv+
-      timeframe: 5 days
-      quality: 720p+ dvdscr+
-      tracking: backfill
-
-
-
-  missing_tv:
-    template:
-      - tv-global
-      - tv_search
-    disable: inputs, est_movies
-    discover:
-      what:
-        - emit_series:
-            backfill: yes
-      from: [filler: yes]
-    include:
-      - series-cleanup.yml
-    sequence:
-      - configure_series:
-          settings:
-            target: 720p+ hdtv+
-            timeframe: 5 days
-            quality: 720p+ dvdscr+
-          #  tracking: backfill
-            propers: no
-            upgrade: no
-          from:
-            trakt_list:
-              account: '{{ secrets.trakt.account }}'
-              list: TV
-              type: shows
-              strip_dates: yes
+    configure_series:
+      settings:
+        target: 720p+ hdtv+
+        timeframe: 1 day
+        quality: 480p+ webrip+
+        propers: 12 hours
+      from:
+        trakt_list:
+          account: '{{ secrets.trakt.account }}'
+          list: TV
+          type: shows
+          strip_dates: no
 
   # Cleans movies from the movie queue (and Trakt) that we already have
   clean_movie_queue:
@@ -341,7 +225,7 @@ tasks:
     movie_queue: accept
     trakt_remove:
       account: '{{ secrets.trakt.account }}'
-      list: Movies    
+      list: Movies
 
   # This task queues all of the movies in my Trakt playlist
   fill_movie_queue:
@@ -355,133 +239,10 @@ tasks:
     accept_all: yes
     movie_queue: add
 
-  # The next two tasks download the queue from the previous task effectively implementing
-  # a 2 day timeframe for 1080p movies, then falls back to 720p
-  movies_1080p:
-    priority: 110
-    template:
-      - movies_global
-      - movies_queued
-    quality: 1080p+ bluray+ h264+ truehd|dtshd|dd5.1|dts
+  
 
-
-  movies_720p:
-    priority: 120
-    template:
-      - movies_global
-      - movies_queued
-    quality: 720p+ dvdrip+ xvid+ truehd|dtshd|dd5.1|dts|ac3
-    torrent_alive:
-      min_seeds: 5
-    delay: 28 days # Wait 28 days for a 1080p movie before trying downloading 720p
-
-  # Use a local folder (synced with Dropbox) as a source
-  # I can drop torrents in this folder and they are synced with Dropbox, always
-  # accepted, then the original file is deleted
-  dropbox_tv:
-    priority: 1
-    include:
-      - series-cleanup.yml
-    template:
-      - tv-global
-    disable:
-      - seen
-      - seen_info_hash
-      - retry_failed
-      - configure_series
-      - trakt_list
-      - inputs
-      - exists_series
-      - regexp
-      - content_size
-      - content_filter
-      - torrent_alive
-    all_series:
-      parse_only: yes
-    sequence:
-      - configure_series:
-          settings:
-            assume_special: true
-          from:
-            trakt_list:
-              account: '{{ secrets.trakt.account }}'
-              list: TV
-              type: shows
-              strip_dates: yes
-    plugin_priority:
-      exec: 0
-    filesystem:
-      path: '/usr/local/Dropbox/torrent_tv'
-      recursive: yes
-      retrieve: files
-      regexp: '.*\.torrent$'
-    no_entries_ok: yes
-    exec:
-      on_output:
-        for_accepted: rm "{{location}}"
-    accept_all: yes
-    verify_ssl_certificates: no
-    set:
-      label: local-tv
-
-
-  # Same as above but for movies
-  dropbox_movie:
-    priority: 2
-    template:
-      - movies_global
-      - movies_queued
-    disable:
-      - seen
-      - seen_info_hash
-      - retry_failed
-      - discover
-      - inputs
-      - exists_movie
-      - seen_movies
-      - regexp
-      - content_size
-      - content_filter
-      - torrent_alive
-    plugin_priority:
-      exec: 0
-    filesystem:
-      path: '/usr/local/Dropbox/torrent_movie'
-      recursive: yes
-      retrieve: files
-      regexp: '.*\.torrent$'
-    no_entries_ok: yes
-    exec:
-      on_output:
-        for_accepted: rm "{{location}}"
-    accept_all: yes
-    verify_ssl_certificates: no
-    set:
-      label: local-movies
-
-  kill_tv:   # used when TV shows go off air/cancelled to remove them from further downloading
-    trakt_lookup: yes
-    disable:
-      - seen
-      - seen_info_hash
-
-    trakt_list:
-      account: '{{ secrets.trakt.account }}'
-      list: TV
-      type: shows
-    all_series: yes
-
-    if:
-      - trakt_series_status == 'Ended': accept
-
-    trakt_remove:
-      account: '{{ secrets.trakt.account }}'
-      list: TV
-
-  # This prfile is to move completed TV data to its proper folder and clean up after itsef
   move_tv:
-    template:
-      - no_global
+    template: [no_global]
     disable:
       - seen
       - seen_info_hash
@@ -492,43 +253,31 @@ tasks:
     no_entries_ok: yes
     accept_all: yes
     metainfo_series: yes
-    all_series:
-      parse_only: yes
-    thetvdb_lookup: yes
+    trakt_lookup: yes
     filesystem:
       path: "/usr/local/torrent/tvdone/"
       # We are looking for any video files that were extracted
       regexp: '.*\.(avi|mkv|mpg|mp4|m4v)$'
       recursive: yes
 
-#    parse_only: yes
-    # Don't attempt to move if we don't have valid metadata
-    require_field: [tvdb_series_name, series_id]
-
+    require_field: [trakt_series_name, series_id]
     move:
       # Folder to move to
       to: >
-        /media/TV/{{ tvdb_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}/{% if series_id_type == 'ep' %}Season {{ series_season }}/{% endif %}
+        /media/TV/{{ trakt_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}/{% if series_id_type == 'ep' %}Season {{ series_season }}/{% endif %}
       # Filename (inside of folder) to move to
       filename: >
-        {{ tvdb_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}.{{ series_id }}{% if tvdb_ep_name|default(False) %}.{{ tvdb_ep_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}{% endif %}.{{ quality }}.{{ location[-3:] }}
+        {{ trakt_series_name|default(series_name)|replace('/', '_')|replace(':'. ' -')|replace(',', '') }}.{{ series_id }}{% if tvdb_ep_name|default(False) %}.{{ tvdb_ep_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }}{% endif %}.{{ quality }}.{{ location[-3:] }}
       clean_source: 40
       along:
         - sub
         - srt
-    if:
-      - movedone:
-          set:
-            path: '{{ movedone }}'
     trakt_add: # Add accepted item to my Trakt watchlist
       account: '{{ secrets.trakt.account }}'
       list: collection
 
-
-# NEW   
-
-  # This prfile is to move completed Movie data to its proper folder and clean up after itsef
-  move_movie:
+    
+  kill_tv:   # used when TV shows go off air/cancelled to remove them from further downloading
     template:
       - no_global
     disable:
@@ -538,25 +287,74 @@ tasks:
       - remember_rejected
       - retry_failed
 
-    no_entries_ok: yes
+    trakt_lookup: yes
+    trakt_list:
+      account: '{{ secrets.trakt.account }}'
+      list: TV
+      type: shows
+    all_series: yes
+
+    if:
+      - trakt_series_status == 'ended': accept
+
+    trakt_remove:
+      account: '{{ secrets.trakt.account }}'
+      list: TV
+  # Discover new shows that are not already added to the existing lists
+  # limit by genres i just don't care about
+  tv_premiere:
+    priority: 50
+    template:
+      - tv_global
+
+    # The entry has to have the tvdb_genres field so I can filter by it
+    require_field:
+      - trakt_series_genres
+      - trakt_series_first_aired_iso
+
+    # Make sure plenty of people are seeding it, otherwise it may not be that good
+    torrent_alive:
+      min_seeds: 50
+    regexp:
+      reject:
+        - documentary: {from: trakt_series_genres}
+        - talk show: {from: trakt_series_genres}
+        - game show: {from: trakt_series_genres}
+#        - reality: {from: tvdb_genres}
+#        - crime: {from: tvdb_genres}
+        - home and garden: {from: trakt_series_genres}
+
+    if:
+      # Block these genres only if they are the ONLY genre listed in
+      # tvdb_genres. For example, this will not block a show that's both
+      # "Comedy" and "Drama" but it will block a show that is just "Drama"
+#      - "tvdb_genres == ['Drama']": reject
+
+      # Block premieres that weren't within the last 60 days
+      - trakt_series_first_aired_iso and trakt_series_first_aired_iso < now - timedelta(days=60): reject
+
+    # Accept all series permieres
+    series_premiere:
+      timeframe: 1 days
+      quality: 720p+ hdtv+
+    # Add to deluge, but don't queue to top (My_TV_Shows are more important)
+    # and put in a different locatio
+    set:
+      movedone: >
+        /media/TV/tvdone/{{ trakt_series_name|default(series_name)|replace('/', '_')|replace(':', ' -')|replace(',', '') }}/{% if series_id_type == 'ep' %}
+      queuetotop: no
+      label: tv-premiere
+
+  seed:
+    disable:
+      - seen
+    trakt_emit:
+      account: '{{ secrets.trakt.account }}'
+      list: TV
+      context: collected
     accept_all: yes
-    imdb_lookup: yes
-    tmdb_lookup: yes
-    proper_movies: yes
-    require_field: [movie_name, movie_year]
-    filesystem:
-      path: "/usr/local/torrent/mvdone/"
-      # We are looking for any video files that were extracted
-      regexp: '.*\.(avi|mkv|mpg|mp4|m4v)$'
-      recursive: yes
-    
-    move:
-      to: >
-        /media/Movie/{{ movie_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }} ({{ movie_year }})/
-      filename: >
-        {{ movie_name|replace('/', '_')|replace(':', ' -')|replace(',', '') }} ({{ movie_year }}).{{ quality }}.{{ location[-3:] }}
-      clean_source: 1000
-    
+    set_series_begin: yes
+    archive: yes
 
 # Run flexget on a periodic basis
 schedules:
@@ -565,13 +363,6 @@ schedules:
     interval:
       minutes: 15
 
-  - tasks: [ 'missing_tv' ]
-    interval:
-      days: 3
-    
-  - tasks: [ 'next_tv' ]
-    interval:
-      hours: 2
   - tasks: [ 'download_tv' ]
     schedule:
       minute: 3,18,33,48
@@ -579,7 +370,6 @@ schedules:
   - tasks: [ 'tv_premiere' ]
     interval:
       hours: 2
-
 
   - tasks: [ 'fill_movie_queue', 'movies_*' ]
     interval:
